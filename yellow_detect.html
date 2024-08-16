@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yellow Center Tracker with Trail</title>
+    <style>
+        #canvas {
+            border: 1px solid black;
+        }
+        .slider-container {
+            margin: 10px 0;
+        }
+        .slider-container label {
+            display: inline-block;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Yellow Center Tracker with Trail</h1>
+    <div class="slider-container">
+        <label for="minYellow">Minimum Yellow Value:</label>
+        <input type="range" id="minYellow" min="0" max="255" value="176">
+        <span id="minYellowValue">150</span>
+    </div>
+    <div class="slider-container">
+        <label for="yellowRedRatio">Yellow-to-Red Ratio:</label>
+        <input type="range" id="yellowRedRatio" min="100" max="300" value="100">
+        <span id="yellowRedRatioValue">1.5</span>
+    </div>
+    <div class="slider-container">
+        <label for="yellowBlueRatio">Yellow-to-Blue Ratio:</label>
+        <input type="range" id="yellowBlueRatio" min="100" max="300" value="157">
+        <span id="yellowBlueRatioValue">1.5</span>
+    </div>
+    <div class="slider-container">
+        <label for="frameRate">Frame Rate:</label>
+        <input type="range" id="frameRate" min="1" max="60" value="5">
+        <span id="frameRateValue">30</span> fps
+    </div>
+    <video id="video" style="display: none;"></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const minYellowSlider = document.getElementById('minYellow');
+        const yellowRedRatioSlider = document.getElementById('yellowRedRatio');
+        const yellowBlueRatioSlider = document.getElementById('yellowBlueRatio');
+        const frameRateSlider = document.getElementById('frameRate');
+
+        const minYellowValue = document.getElementById('minYellowValue');
+        const yellowRedRatioValue = document.getElementById('yellowRedRatioValue');
+        const yellowBlueRatioValue = document.getElementById('yellowBlueRatioValue');
+        const frameRateValue = document.getElementById('frameRateValue');
+
+        let trailPoints = [];
+        const maxTrailLength = 50;
+        // Modified webcam setup
+        async function setupWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                await video.play();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                processFrame();
+            } catch (err) {
+                console.error("Error accessing the webcam", err);
+                alert("Error accessing the webcam. Please make sure you have a webcam connected and have granted permission to use it.");
+            }
+        }
+
+        // Call setupWebcam when the page loads
+        window.addEventListener('load', setupWebcam);
+
+        function updateSliderValues() {
+            minYellowValue.textContent = minYellowSlider.value;
+            yellowRedRatioValue.textContent = (yellowRedRatioSlider.value / 100).toFixed(2);
+            yellowBlueRatioValue.textContent = (yellowBlueRatioSlider.value / 100).toFixed(2);
+            frameRateValue.textContent = frameRateSlider.value;
+        }
+
+        minYellowSlider.addEventListener('input', updateSliderValues);
+        yellowRedRatioSlider.addEventListener('input', updateSliderValues);
+        yellowBlueRatioSlider.addEventListener('input', updateSliderValues);
+        frameRateSlider.addEventListener('input', updateSliderValues);
+
+        let lastFrameTime = 0;
+        let animationFrameId;
+
+        function processFrame(currentTime) {
+            const frameInterval = 1000 / parseInt(frameRateSlider.value);
+            
+            if (currentTime - lastFrameTime >= frameInterval) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                const minYellow = parseInt(minYellowSlider.value);
+                const yellowRedRatio = yellowRedRatioSlider.value / 100;
+                const yellowBlueRatio = yellowBlueRatioSlider.value / 100;
+
+                let sumX = 0;
+                let sumY = 0;
+                let count = 0;
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const red = data[i];
+                    const green = data[i + 1];
+                    const blue = data[i + 2];
+
+                    // Check if the pixel is predominantly yellow
+                    if (green > minYellow && red > minYellow && 
+                        green > red * yellowRedRatio && 
+                        green > blue * yellowBlueRatio && 
+                        red > blue * yellowBlueRatio) {
+                        const x = (i / 4) % canvas.width;
+                        const y = Math.floor((i / 4) / canvas.width);
+                        sumX += x;
+                        sumY += y;
+                        count++;
+                    }
+                }
+
+                // Clear the canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw the video frame
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // If yellow pixels were detected, draw the average center
+                if (count > 0) {
+                    const avgX = sumX / count;
+                    const avgY = sumY / count;
+
+                    ctx.beginPath();
+                    ctx.arc(avgX, avgY, 10, 0, 2 * Math.PI);
+                    ctx.fillStyle = 'blue';
+                    ctx.fill();
+                }
+
+                lastFrameTime = currentTime;
+            }
+
+            animationFrameId = requestAnimationFrame(processFrame);
+        }
+
+        function startProcessing() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            processFrame();
+        }
+
+        updateSliderValues();
+        setupWebcam().then(startProcessing);
+    </script>
+</body>
+</html>
